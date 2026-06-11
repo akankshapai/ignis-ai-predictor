@@ -5,8 +5,17 @@ import sys
 import streamlit as st
 import numpy as np
 from PIL import Image
-import tensorflow as tf
 import time
+
+# TFLite interpreter — uses the lightweight tflite-runtime package on the cloud
+# and falls back to the full tf.lite.Interpreter when running locally.
+try:
+    from tflite_runtime.interpreter import Interpreter as TFLiteInterpreter
+except ImportError:
+    import sys
+    sys.path.insert(0, r"C:\tflib")   # local dev path
+    import tensorflow as tf
+    TFLiteInterpreter = tf.lite.Interpreter
 
 # ──────────────────────────────────────────────
 # PAGE CONFIGURATION
@@ -284,12 +293,14 @@ st.markdown(
 st.markdown("<hr class='section-divider'>", unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────
-# MODEL LOADER (cached for performance)
+# TFLITE MODEL LOADER (cached for performance)
 # ──────────────────────────────────────────────
 @st.cache_resource(show_spinner=False)
 def load_model():
-    model = tf.keras.models.load_model("wildfire_cnn_model.h5")
-    return model
+    """Load the TFLite interpreter and allocate tensors once, then cache."""
+    interpreter = TFLiteInterpreter(model_path="wildfire_model.tflite")
+    interpreter.allocate_tensors()
+    return interpreter
 
 # ──────────────────────────────────────────────
 # FILE UPLOADER
@@ -322,16 +333,20 @@ if uploaded_file is not None:
         with st.spinner("⏳ Running orbital pixel analysis matrix..."):
             time.sleep(1.2)
 
-            # Load model
-            model = load_model()
+            # Load TFLite interpreter
+            interpreter = load_model()
+            input_details  = interpreter.get_input_details()
+            output_details = interpreter.get_output_details()
 
             # Pre-process
             img_resized = image.resize((150, 150))
             img_array   = np.array(img_resized, dtype=np.float32) / 255.0
             img_array   = np.expand_dims(img_array, axis=0)   # (1, 150, 150, 3)
 
-            # Predict
-            prediction = model.predict(img_array, verbose=0)
+            # Run inference via TFLite
+            interpreter.set_tensor(input_details[0]["index"], img_array)
+            interpreter.invoke()
+            prediction = interpreter.get_tensor(output_details[0]["index"])
             fire_prob  = float(prediction[0][0])
 
         confidence_pct = fire_prob * 100
