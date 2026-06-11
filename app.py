@@ -7,15 +7,20 @@ import numpy as np
 from PIL import Image
 import time
 
-# TFLite interpreter — uses the lightweight tflite-runtime package on the cloud
-# and falls back to the full tf.lite.Interpreter when running locally.
+# TFLite interpreter — three-way fallback for maximum compatibility:
+#   1. tflite_runtime  (Streamlit Cloud / lightweight install)
+#   2. ai_edge_litert  (Google's new official replacement package)
+#   3. tf.lite         (local dev via C:\tflib)
 try:
     from tflite_runtime.interpreter import Interpreter as TFLiteInterpreter
 except ImportError:
-    import sys
-    sys.path.insert(0, r"C:\tflib")   # local dev path
-    import tensorflow as tf
-    TFLiteInterpreter = tf.lite.Interpreter
+    try:
+        from ai_edge_litert.interpreter import Interpreter as TFLiteInterpreter
+    except ImportError:
+        import sys
+        sys.path.insert(0, r"C:\tflib")   # local dev path
+        import tensorflow as tf
+        TFLiteInterpreter = tf.lite.Interpreter
 
 # ──────────────────────────────────────────────
 # PAGE CONFIGURATION
